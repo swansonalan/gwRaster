@@ -1,0 +1,27 @@
+Package: gwRaster
+Type: Package
+Title: A package for fitting, evaluating, visualizing, and applying geographically weighted regression models over large rasters
+Version: 0.1.0
+Authors@R: person("Alan","Swanson",email="mtskimtb@gmail.com",role=c("aut","cre"))
+Description: Contains a number of functions for fitting a GWR, plotting it's errors, producing fits, plotting those fits, etc.
+    Typical process would be to:
+    1. Fit a model to tabular data using gwr_loocv().  This fits the gwr to a set of points defined by the 'idx' argument.  It outputs a 'gwr' object 
+    containing the formula, cofficients at each evaluation point.  The plot() method for this makes a set of diagnostic plots.
+    2. Estimate coefficients over a grid using gwr_coef_map(), using a 'gwr' fit from (1) as the main argument.  Main additional argument is a raster 
+    template defining the grid over which to make estimates.  By default, these outputs go into a 'gwr_coefs' subfolder of the directory containing the tmplt file.  
+    Outputs get named based on the formula converted to text and the bandwidth.  Generates a 'gwr.coef.fit' object containing the orignal 'gwr' fit and file locations.  
+    3. Make maps using the coefficients from (2) using gwr_fit_map().  The main argument is a 'gwr.coef.fit' object, along with a named vector of raster filenames.  
+    Works great with     pre-made sets of predictor rasters covering smaller subsets of a large region.  By default, outputs go into a subfolder of the directory 
+    of the input rasters name 'gwr_fits', using the same 'name' generated in (2).  Returns a 'gwr.raster.fit' object containing the 'gwr.coef.fit' filenames and stats. 
+    4. Use pan_sharpen() to combine a more accurate coarse-res fit with a more precise high-res fit.  Main arguments are the two 'gwr.raster.fit' objects.  Output will 
+    be given a name combining the two and go into the same directory.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.2.1
+Imports: 
+    abind,
+    doParallel,
+    foreach,
+    geodist,
+    terra
