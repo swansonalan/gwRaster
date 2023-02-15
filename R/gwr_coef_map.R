@@ -15,6 +15,9 @@ gwr_coef_map <- function(x,tmplt.name,name="",out.dir=NULL,buffer=3,verbose=T,ov
   if(is.null(out.dir)) out.dir <- paste0(dirname(tmplt.name),"/gwr_coefs/")
   if(!file.exists(out.dir)) dir.create(out.dir)
   coef.name <- paste0(out.dir,x@name,"_coefs.tif")
+  '%dopar%' <- foreach::'%dopar%'
+  '%do%' <- foreach::'%do%'
+
   # masked.coef.name <- paste0(x@out.dir,"coefs/",x@name,"_coefs_masked.tif")
   if(file.exists(coef.name) & overwrite) file.remove(coef.name)
   if(!file.exists(coef.name)){
@@ -22,7 +25,7 @@ gwr_coef_map <- function(x,tmplt.name,name="",out.dir=NULL,buffer=3,verbose=T,ov
     vn <- all.vars(as.formula(x@form))[-1]
     ss <- complete.cases(x@rdata[,c(rn,vn)])
     if(fast){
-      X <- model.matrix(as.formula(x@form),model.frame(x@rdata[,c(rn,vn)]))
+      X <- model.matrix(as.formula(x@form),model.frame(x@rdata))
       np <- ncol(X)
       nc <- np+2
     } else {
@@ -34,7 +37,7 @@ gwr_coef_map <- function(x,tmplt.name,name="",out.dir=NULL,buffer=3,verbose=T,ov
     out <- matrix(NA,nrow(tmplt),nc)
     length(idx <- which(!is.na(tmplt[,3])))
     if(verbose)  cat("estimating GWR coefficients on a grid\n")
-    XY <- as.matrix(crds(project(vect(x@rdata,crs=geog),crs(Tmplt,T))))
+    XY <- as.matrix(terra::crds(terra::project(terra::vect(x@rdata,crs=geog),crs(Tmplt,T))))
     x@rdata$x <- XY[,1];x@rdata$y <- XY[,2]
 
     if(verbose) cat(paste0("Calculating GWR coefficients on a ",nrow(Tmplt)," by ",ncol(Tmplt)," grid (",length(idx)," pts) using ",foreach::getDoParWorkers()," cores\n"))
@@ -46,7 +49,7 @@ gwr_coef_map <- function(x,tmplt.name,name="",out.dir=NULL,buffer=3,verbose=T,ov
 
       if(fast){
         ss2 <- d<md & ss
-        z <- try(lm.wfit(x=X[ss2,],y=x@rdata[ss2,rn],w=dnorm(d[ss2]/use_bw))$coefficients)
+        z <- if(np==1) try(lm.wfit(x=matrix(X[ss2,],ncol=1),y=x@rdata[ss2,rn],w=dnorm(d[ss2]/use_bw))$coefficients) else  try(lm.wfit(x=X[ss2,],y=x@rdata[ss2,rn],w=dnorm(d[ss2]/use_bw))$coefficients)
         y <- if(inherits(z,"try-error")) rep(NA,np) else z
         y <- if(length(y)<np) rep(NA,np) else y
         n <- sum(ss2)
@@ -68,7 +71,7 @@ gwr_coef_map <- function(x,tmplt.name,name="",out.dir=NULL,buffer=3,verbose=T,ov
     if(fast) colnames(out) <- c("int",tolower(vn),"bwd","n")
     Tmplt <- terra::rast(Tmplt,nlyrs=nc,vals=F)
     values(Tmplt) <- out
-    writeRaster(Tmplt,coef.name,overwrite=T,NAflag=-9999,gdal=c("COMPRESS=LZW","TIFW=NO"))
+    writeRaster(Tmplt,coef.name,overwrite=T,NAflag=-9999,gdal=c("COMPRESS=LZW"))
 
     if(verbose) cat("done, time used",round(unclass(Sys.time())-t0,1),"seconds\n\n")
     out <- new("gwr.coef.fit",x,tmplt.name=tmplt.name,coef.name=coef.name,band.names=colnames(out))

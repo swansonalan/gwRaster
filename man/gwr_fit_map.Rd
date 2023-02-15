@@ -4,7 +4,14 @@
 \alias{gwr_fit_map}
 \title{Makes GWR coefficient estimates on a grid}
 \usage{
-gwr_fit_map(x, img.fn, verbose = T, overwrite = F, overwrite.resamps = F)
+gwr_fit_map(
+  x,
+  img.fn,
+  verbose = T,
+  overwrite = F,
+  overwrite.resamps = F,
+  do.stats = F
+)
 }
 \arguments{
 \item{img.fn}{filename of a raster to use as grid, or a raster object}

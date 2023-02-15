@@ -4,7 +4,7 @@
 \alias{plot,gwr.raster.fit,ANY-method}
 \title{Plots for a GWR raster fit.}
 \usage{
-\S4method{plot}{gwr.raster.fit,ANY}(x, title = NULL, mar.fract = 0.18, show.errs = F, zlab = NULL, ...)
+\S4method{plot}{gwr.raster.fit,ANY}(x, mar.fract = 0.18, show.errs = F, zlab = NULL, ...)
 }
 \arguments{
 \item{x}{a gwr.coef.fit object created using gwr_coef_map()}

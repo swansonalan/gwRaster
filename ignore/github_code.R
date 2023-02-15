@@ -1,4 +1,8 @@
 git remote add origin https://github.com/swansonalan/gwRaster
+git remote set-url origin git@github.com:swansonalan/gwRaster.git
+
+cd /home/aswanson/code/gwRaster
+gid add .
 git commit -m "initial commit"
 git push -u origin master
 git pull

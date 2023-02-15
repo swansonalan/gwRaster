@@ -6,7 +6,7 @@
 \usage{
 gwr_loocv(
   form,
-  rdata,
+  data,
   name = "",
   bw = NaN,
   adaptive = F,
@@ -20,8 +20,6 @@ gwr_loocv(
 \arguments{
 \item{form}{a standard R formula in character format e.g. z~x+y}
 
-\item{rdata}{a data.frame containing the variables in 'form', along with columns named 'lat' and 'lon'.}
-
 \item{name}{a character vector used in any filenames created.}
 
 \item{bw}{fixed bandwidth in km.  Can be left blank if 'abw' is set.  Error will be triggered if both 'bw' and 'abw' are set.}
@@ -29,6 +27,8 @@ gwr_loocv(
 \item{idx}{optional vector of row numbers at which to perform LOOCV.}
 
 \item{n.samp}{optional max number of locations at which to perform LOOCV.}
+
+\item{rdata}{a data.frame containing the variables in 'form', along with columns named 'lat' and 'lon'.}
 
 \item{out.dir}{a filepath for outputs}
 

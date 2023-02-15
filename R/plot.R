@@ -1,4 +1,12 @@
 
+zoom <- function(img){
+  z <- locator(n=2)
+  z <- terra::ext(c(min(z[[1]]),max(z[[1]]),min(z[[2]]),max(z[[2]])))
+  img2 <- crop(img,z)
+  rplot(img2,crop=.99)
+  }
+
+
 #' plot a raster layer
 #'
 #' Makes a set of plots including:
@@ -93,7 +101,7 @@ setMethod("plot",signature(x="SpatRaster"),function(x,hill=NULL,sym=F,crop=1,zla
   } else {
     terra::image(x,breaks=brks,col=cols,xaxt="n",yaxt="n",xlab="",ylab="")
   }
-  if(isLonLat(x)) fields::US(add=T)
+  if(terra::is.lonlat(x)) fields::US(add=T)
 })
 
 #' plot a SpatRaster layer
@@ -124,12 +132,45 @@ rplot <- function(x,hill=NULL,sym=F,crop=1,zlab="",mar.fract=.18,brks=NULL,...){
   # actual plot ~~~~~
   par(plt=c(op$plt[1],1-1.05*mar.fract,par()$plt[3:4]),new=T)
   if(!is.null(hill)){
-    terra::image(hill,col=gray(seq(0,1,length=500)),xaxt="n",yaxt="n",xlab="",ylab="",...)
-    terra::image(x,breaks=brks$brks,col=brks$alphacols,add=T)
+    terra::image(hill,col=gray(seq(0,1,length=500)),xaxt="n",yaxt="n",xlab="",ylab="",useRaster=T,...)
+    terra::image(x,breaks=brks$brks,col=brks$alphacols,useRaster=T,add=T)
   } else {
-    terra::image(x,breaks=brks$brks,col=brks$cols,xaxt="n",yaxt="n",xlab="",ylab="",...)
+    terra::image(x,breaks=brks$brks,col=brks$cols,xaxt="n",yaxt="n",xlab="",ylab="",useRaster=T,...)
   }
-  if(isLonLat(x)) fields::US(add=T)
+  if(terra::is.lonlat(x)) fields::US(add=T)
+}
+
+#' plot a SpatRaster layer
+#'
+#' Makes a set of plots including:
+#' map of fits
+#' scatterplot of fits vs response
+#' map of errors
+#' qqnorm plot
+#' variogram
+#'
+#' @param x a RasterLayer object
+#' @return nothing
+#' @export
+pplot <- function(x,hill=NULL,sym=F,crop=1,zlab="",mar.fract=.18,brks=NULL,...){
+  v <- x[,3]
+  brks <- brkfun(v,crop=crop,sym=sym)
+
+  # legend ~~~~
+  op <- par(plt=c(1-mar.fract,1-.8*mar.fract,par()$plt[3:4]),mgp=c(2,.75,0),cex.axis=.8,cex.lab=.9,new=F)
+  terra::image(list(z=t(brks$lmat),y=brks$mids,x=1:5),xaxt="n",yaxt="n",ylab="",xlab="",breaks=brks$brks,col=brks$cols)
+  axis(side=4,at=pretty(brks$mids),mgp=c(.3,.25,0),cex.axis=.8,tcl=-.1)
+  mtext(zlab,side=4,line=1.4,xpd=NA,cex=.8)
+
+  # actual plot ~~~~~
+  par(plt=c(op$plt[1],1-1.05*mar.fract,par()$plt[3:4]),new=T)
+  if(!is.null(hill)){
+    terra::image(hill,col=gray(seq(0,1,length=500)),xaxt="n",yaxt="n",xlab="",ylab="",...)
+    points(x[,1],x[,2],col=brks$col.vec)
+  } else {
+    plot(x[,1],x[,2],col=brks$col.vec,xaxt="n",yaxt="n",xlab="",ylab="",...)
+  }
+  fields::US(add=T)
 }
 
 
@@ -141,7 +182,6 @@ rplot <- function(x,hill=NULL,sym=F,crop=1,zlab="",mar.fract=.18,brks=NULL,...){
 #' @return nothing
 #' @export
 setMethod("plot",signature(x="gwr.coef.fit"),function(x,hill=NULL,crop=.99,title=NULL){
-  print(class(x))
   img <- terra::rast(x@coef.name)
   vn <- c("intercept",all.vars(as.formula(x@form))[-1])
   np <-  ncol(model.matrix(as.formula(x@form),x@rdata[1:3,]))
@@ -158,7 +198,7 @@ setMethod("plot",signature(x="gwr.coef.fit"),function(x,hill=NULL,crop=.99,title
 #' @param x a gwr.coef.fit object created using gwr_coef_map()
 #' @return nothing
 #' @export
-setMethod("plot",signature(x="gwr.raster.fit"),function(x,title=NULL,mar.fract=.18,show.errs=F,zlab=NULL,...){
+setMethod("plot",signature(x="gwr.raster.fit"),function(x,mar.fract=.18,show.errs=F,zlab=NULL,...){
   if(is.null(title)) title <- x@name
   rn <- strsplit(x@form,"~")[[1]][1]
   img <- terra::rast(x@fit.name)
@@ -189,7 +229,7 @@ setMethod("plot",signature(x="gwr.raster.fit"),function(x,title=NULL,mar.fract=.
 
   if("hill" %in% names(x@img.fn)){
     hill <- terra::rast(x@img.fn["hill"])
-    terra::image(hill,col=gray(seq(0,1,length=500)),xaxt="n",yaxt="n",xlab="",ylab="",main=title,...)
+    terra::image(hill,col=gray(seq(0,1,length=500)),xaxt="n",yaxt="n",xlab="",ylab="",...)
     terra::image(img,breaks=rbrks$brks,col=rbrks$alphacol,add=T)
   } else {
     terra::image(img,breaks=brks,col=cols,xaxt="n",yaxt="n",xlab="",ylab="")
@@ -213,7 +253,7 @@ setMethod("plot",signature(x="gwr"),function(x,title=NULL,max.pts=7500){
 
   # data ~~~~~~~~~~~~~~~~
   tmp <- x@rdata[!is.na(x@rdata$loo.fit),]
-  XY <- as.matrix(crds(project(vect(tmp,crs=geog),my_aea)))/1000
+  XY <- as.matrix(terra::crds(terra::project(terra::vect(tmp,crs=geog),my_aea)))/1000
   tmp$x <- XY[,1];tmp$y <- XY[,2]
   tmp$loo.fit <- pmax(tmp$loo.fit,0)
   tmp$full.fit <- pmax(tmp$full.fit,0)

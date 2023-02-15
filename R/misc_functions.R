@@ -1,5 +1,23 @@
 geog <- "+proj=longlat +datum=WGS84"
 my_aea <- "+proj=aea +lat_1=33 +lat_2=60 +lat_0=33 +lon_0=-120 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+date.seq <- function(x,y) format(seq(as.Date(x,"%Y%m%d"),as.Date(y,"%Y%m%d"),by=1),"%Y%m%d")
+
+
+#' Wrapper for file.info that produces a more compact output ~~~~~~~
+#'
+#' @param fnames a vector of filenames
+#' @param sort whether or not to sort the table by modification date
+#' @return a data.frame of file info including size in mb and modification date
+#' @export
+fi <- function(fnames,sort=T){
+  x <- file.info(fnames)
+  x$size <- round(x$size/2^20,2)
+  rownames(x) <- basename(fnames)
+  colnames(x)[1] <- "size (mb)"
+  if(sort) x <- x[order(x$mtime,decreasing=T),1:4]
+  x
+}
+
 
 #' Wrapper for terra::extract which automatically reprojects points to match the raster ~~~~~~~
 #'
@@ -14,8 +32,9 @@ textract <- function(img,locs,...){
   if("latitude" %in% names(locs)) names(locs)[names(locs)=="latitude"] <- "lat"
   if("longitude" %in% names(locs)) names(locs)[names(locs)=="longitude"] <- "lon"
   lcs <- if(terra::is.lonlat(img)) terra::vect(locs,crs=geog) else terra::project(terra::vect(locs,crs=geog),img.prj)
-  as.vector(terra::extract(img,lcs,ID=F,...)[,1])
-
+  out <- terra::extract(img,lcs,ID=F,...)
+  if("ID" %in% colnames(out)) out <- out[,-match("ID",colnames(out))]
+  if(dim(img)[3]==1) as.vector(as.matrix(out)[,1]) else out
 }
 
 #' lists objects in the current environment, and their size ~~~~~~~
@@ -99,7 +118,8 @@ listfiles <- function(...,include.dirs=F,full=T){
 #' @param ... additional arguemnts to terra::extract e.g. method='bilinear'
 #' @return numeric vector of values at points
 #' @export
-get_proj_string <- function(img,tgt,band=1){
+get_proj_string <- function(img,tgt,band=1,method="bilinear"){
+  if(inherits(img,"RasterLayer")) img <- terra::rast(img)
   input.fn <- if(inherits(img,"character")) img else terra::sources(img)
   if(inherits(img,"character")) img <- terra::rast(img)
   if(inherits(tgt,"character")) tgt <- terra::rast(tgt)
@@ -118,16 +138,89 @@ get_proj_string <- function(img,tgt,band=1){
   if(sproj==dproj){
     # If new image has an extent greater than template and is unprojected, gdal_translate works and is much faster ~~~
     ts <- paste(ddims[2:1],collapse=" ")
-    proj.string <- paste0("gdal_translate -b ",band," -projwin ",paste(dext[c(1,4,2,3)],collapse=" ")," -outsize ",ts," -a_srs '",dproj,"' -r bilinear -ot Float32 -co 'COMPRESS=LZW' -co 'BIGTIFF=YES' -q -a_nodata -9999 ")
+    proj.string <- paste0("gdal_translate -b ",band," -projwin ",paste(dext[c(1,4,2,3)],collapse=" ")," -outsize ",ts," -a_srs '",dproj,"' -r ",method," -ot Float32 -co 'COMPRESS=LZW' -co 'BIGTIFF=YES' -q -a_nodata -9999 ")
   } else {
     if(band>1) stop("can't warp single band of a multiband image")
     te <- paste(dext[c(1,3,2,4)],collapse=" ")
     tr <- paste(terra::res(tgt)[2:1],collapse=" ")
     ts <- paste(c(terra::ncol(tgt),terra::nrow(tgt)),collapse=" ")
-    proj.string <- paste0("gdalwarp -wm 1000 -multi -wo 'NUM_THREADS=1' -t_srs '",dproj,"' -te ",te," -ts ",ts," -r bilinear -ot Float32 -co 'COMPRESS=LZW' -co 'BIGTIFF=YES' -q -dstnodata -9999 ")
+    proj.string <- paste0("gdalwarp -wm 1000 -multi -wo 'NUM_THREADS=1' -t_srs '",dproj,"' -te ",te," -ts ",ts," -r ",method," -ot Float32 -co 'COMPRESS=LZW' -co 'BIGTIFF=YES' -q -dstnodata -9999 ")
   }
   paste0(proj.string,input.fn)
 }
+
+#' reprojects a raster using gdal commands ~~~~~~~
+#'
+#' @param img a spatRaster object or the name of a raster file
+#' @param tgt a spatRaster object, the name of a raster file, or a numeric vector defining an extent.
+#' @param fn.out a filename for the output raster
+#' @param execute logical, whether to execute the command or return it as a string
+#' @return either a spatRaster object invisiblly, or a text string with a gdal system command
+#' @export
+gwarp <- function(img,tgt,fn.out,execute=T){
+  if(inherits(img,"character")){
+    input.fn <- img
+  } else {
+    input.fn <- terra::sources(img)
+    if(input.fn=="") {
+      input.fn <- tempfile(fileext=".tif")
+      writeRaster(img,input.fn,gdal=c("COMPRESS=LZW"))
+    }
+  }
+  if(inherits(tgt,"SpatRaster")){
+      cmd <- paste(get_proj_string(input.fn,tgt),fn.out)
+  }
+  if(inherits(tgt,"numeric")){
+      img <- terra::rast(input.fn)
+      res <- mean(terra::res(img))
+      dims <- ceiling(round(c((tgt[2]-tgt[1])/res,(tgt[4]-tgt[3])/res),3))
+      proj <- paste0("'",terra::crs(img,T),"'")
+      cmd <- paste("gdal_translate -projwin",tgt[1],tgt[4],tgt[2],tgt[3],"-outsize",paste(dims,collapse=" "),"-a_srs",proj,"-co 'COMPRESS=LZW' -co 'BIGTIFF=YES'",input.fn,fn.out)
+  }
+  if(execute){
+    system(cmd)
+    invisible(rast(fn.out))
+  } else return(cmd)
+}
+
+#' crops a set of spatRaster images ~~~~~~~
+#'
+#' @param img a spatRaster object or the name of a raster file
+#' @param ext a spatRaster extent, or a numeric vector describing an extent.
+#' @param dir an existing directory.  a subdirectory based on the center of the extent will be created
+#' @return a vector of filenames for the subset rasters.
+#' @export
+
+make_subset <- function(my.ext,fn,dir="/mnt/DataDrive1/data/wg/raster/30m_subsets/",ext.name=NULL){
+  '%dopar%' <- foreach::'%dopar%'
+  '%do%' <- foreach::'%do%'
+  img.names <- names(fn)
+  if(!inherits(my.ext,"numeric")) my.ext <- as.numeric(my.ext)
+  is.geog <- abs(my.ext[1])< 360 & abs(my.ext[2])< 360 & abs(my.ext[3])<90 & abs(my.ext[4])<90
+  ext.cent <- abs(c((my.ext[1]+my.ext[2])/2,(my.ext[3]+my.ext[4])/2))
+  ext.mult <- if(is.geog) 1000 else 10
+  if(is.null(ext.name)) ext.name <- paste0(ext.mult*round(ext.cent[1]/ext.mult),"_",ext.mult*round(ext.cent[2]/ext.mult))
+  ext.dir <- paste0(dir,ext.name,"/")
+  if(!file.exists(ext.dir)) dir.create(ext.dir)
+  outnames <- paste0(ext.dir,sub(".tif",paste0("_",ext.name,".tif"),basename(fn)))
+  names(outnames) <- img.names
+  if(any(ss.needed <- !file.exists(outnames))){
+      print(ss.needed)
+      cmds <- foreach::foreach(fn.in=fn,fn.out=outnames,.combine='c') %do% gwarp(fn.in,my.ext,fn.out,execute=F)
+      if(test_cluster()) foreach::foreach(cmd=cmds[ss.needed]) %dopar% system(cmd) else foreach::foreach(cmd=cmds[ss.needed]) %do% system(cmd)
+  }
+  if((length(i <- grep("dem",img.names))==1) & (!"hill" %in% img.names)){
+      hill.name <- sub("dem","hill",outnames[i])
+      if(!file.exists(hill.name)){
+          hill <- hillshade(terra::rast(outnames[i]))
+          terra::writeRaster(hill,hill.name,gdal="COMPRESS=LZW")
+      }
+      outnames <- c(outnames,hill.name)
+      names(outnames)[length(outnames)] <- "hill"
+  }
+  return(outnames)
+}
+
 
 #' Calculates R-squared
 #'
@@ -322,9 +415,9 @@ xExtent <- function(x,to,from=NULL){
   if(is.null(from)) from <- "+proj=longlat +datum=WGS84"
   sp::coordinates(y)<-c("x","y")
   sp::proj4string(y)<-sp::CRS(from)
-  zz <- data.frame(sp::spTransform(y,CRS(to)))
+  zz <- data.frame(sp::spTransform(y,sp::CRS(to)))
   nxt <- c(min(zz[,1]),max(zz[,1]),min(zz[,2]),max(zz[,2]))
-  return(list(zz[c(1:4,1),],extent(nxt),nxt))
+  return(list(zz[c(1:4,1),],raster::extent(nxt),nxt))
 }
 
 #' Resets all graphical parameters to default values and allows changes

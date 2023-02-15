@@ -87,6 +87,8 @@ setClass(
     img.fn="character",
     fit.name="character",
     fine.smooth.name="character",
+    gaussian.smooth.cmd="character",
+    ps.multiplier.name="character",
     temp.coef.names="character",
     rast.stats="numeric"
   ),
